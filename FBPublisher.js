@@ -17,11 +17,23 @@ var FBPublisher = {
 		} );
 	},
 	
+	requestPermission: function requestPermission(permission) {
+		var self = this;
+		FB.login(function(response) {
+			if(typeof response.authResponse !== 'undefined') {
+				//refresh permissions and possibly publish
+				self.getPermissions();
+			}
+		}, {
+			scope: permission
+		} );
+	},
+	
 	getPermissions: function getPermissions() {
 		var self = this;
 		FB.api('/me/permissions/', function getPermissionsResponse(response) {
 			self.permissions = response.data[0];
-			console.log(response, self.permissions);
+			self.publishPending();
 		} );
 	},
 	
@@ -30,35 +42,50 @@ var FBPublisher = {
 	},
 	
 	publish: function publish(action, obj, callback) {
-		this.actions.push( {
-			name: action,
-			obj: obj,
-			callback: typeof callback !== 'function' ? function(){} : callback
-		} );
+		if(this.hasPermission('publish_actions')) {
+			//publish immediately
+			FB.api('/me/' + action, 'POST', obj, callback );
+			return true;
+		} else {
+			//store to pending
+			this.actions.push( {
+				name: action,
+				obj: obj,
+				start_time: (new Date()).toISOString()
+			} );
+			//we don't have permission to publish, so we ask for it
+			this.requestPermission('publish_actions');
+			
+			//TODO: handle callback?
+			
+			return false;
+		}
 	},
 	
-	pump: function pump() {
-		//check if we have publish_actions permission
-		if(this.hasPermission('publish_actions')) {
-			if(this.actions.length > 0) {
-				var batch = [];
-				var actions = [];
-				for(var i in this.actions) {
-					var action = this.actions[i];
-					batch.push( {
-						method: 'POST',
-						relative_url: 'me/' + action.name,
-						//TODO: add object keys
-						callback: action.callback
-					} );
+	publishPending: function publishPending() {
+		if(this.actions.length > 0) {
+			var batch = [];
+			var actions = [];
+			for(var i in this.actions) {
+				var action = this.actions[i];
+				var message = {
+					method: 'POST',
+					relative_url: 'me/' + action.name,
+					start_time: action.start_time
+				};
+				for(var k in action.obj) {
+					message[k] = action.obj[k];
 				}
-				
-				FB.api('/', 'POST', {
-					batch: batch
-				}, function(response){ console.log(response); });
+				batch.push( message );
+				delete action;
 			}
-		} else {
 			
+			FB.api('/', 'POST', {
+				batch: batch
+			}, function publishPendingResponse(response) {
+				//TODO: perform callback for each request response
+				console.log(response);
+			} );
 		}
 	}
 };
