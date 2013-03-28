@@ -20,10 +20,7 @@ var FBPublisher = {
 	requestPermission: function requestPermission(permission) {
 		var self = this;
 		FB.login(function(response) {
-			if(typeof response.authResponse !== 'undefined') {
-				//refresh permissions and possibly publish
-				self.getPermissions();
-			}
+			//TODO: handle cancelation
 		}, {
 			scope: permission
 		} );
@@ -44,14 +41,17 @@ var FBPublisher = {
 	publish: function publish(action, obj, callback) {
 		if(this.hasPermission('publish_actions')) {
 			//publish immediately
-			FB.api('/me/' + action, 'POST', obj, callback );
+			FB.api('/me/' + action, 'POST', obj, callback);
 			return true;
 		} else {
+			//add current timestamp
+			if(typeof obj.start_time === 'undefined') {
+				obj['start_time'] = (new Date()).toISOString().replace(/\..+/g, '+0000');
+			}
 			//store to pending
 			this.actions.push( {
 				name: action,
 				obj: obj,
-				start_time: (new Date()).toISOString()
 			} );
 			//we don't have permission to publish, so we ask for it
 			this.requestPermission('publish_actions');
@@ -73,11 +73,13 @@ var FBPublisher = {
 					relative_url: 'me/' + action.name,
 					start_time: action.start_time
 				};
+				var body = [];
 				for(var k in action.obj) {
-					message[k] = action.obj[k];
+					body.push(encodeURI(k + '=' + action.obj[k]));
 				}
+				message['body'] = body.join('&');
 				batch.push( message );
-				delete action;
+				delete this.actions[i];
 			}
 			
 			FB.api('/', 'POST', {
