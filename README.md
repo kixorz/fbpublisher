@@ -1,4 +1,4 @@
-fbpublisher
+FBPublisher
 ===========
 
 Helping with smart publishing of Open Graph actions since 2013!
